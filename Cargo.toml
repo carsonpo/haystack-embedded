@@ -1,0 +1,52 @@
+[package]
+name = "haystack_embedded"
+version = "0.1.0"
+edition = "2021"
+
+# [build]
+# target = "wasm32-unknown-unknown"
+# rustflags = ["-C", "target-feature=+simd128"]
+
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+default = ["python"]
+python = ["pyo3"]
+wasm = ["wasm-bindgen"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+rayon = "1.10.0"
+uuid = { version = "1.8.0", features = ["v4", "serde"] }
+serde_json = "1.0.68"
+wasm-bindgen = { version = "0.2.92", optional = true }
+pyo3 = { version = "0.21.2", features = ["extension-module"], optional = true }
+
+
+[dependencies.cfg-if]
+version = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[profile.bench]
+opt-level = 3
+
+# [[bench]]
+# name = "hamming_distance"
+# harness = false
+
+# [[bench]]
+# name = "gemv"
+# harness = false
+
+# [[bench]]
+# name = "gemm"
+# harness = false
+
+
+[dev-dependencies]
+criterion = "0.5.1"
