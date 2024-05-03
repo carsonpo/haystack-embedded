@@ -141,6 +141,9 @@ where
         serialize_length(&mut serialized, self.values.len() as u32);
         serialize_length(&mut serialized, self.children.len() as u32);
 
+        // serialize offset
+        serialized.extend_from_slice(&self.offset.to_le_bytes());
+
         for key in &self.keys {
             let serialized_key = key.serialize();
             serialized.extend_from_slice(&serialize_length(
@@ -187,6 +190,9 @@ where
         let num_children = read_length(&data[offset..offset + 4]);
         offset += 4;
 
+        let node_offset = i64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        offset += 8;
+
         let mut keys = Vec::with_capacity(keys_len);
         for _ in 0..keys_len {
             let key_size = read_length(&data[offset..offset + 4]) as usize;
@@ -222,7 +228,7 @@ where
             children,
             max_keys: MAX_KEYS,
             node_type,
-            offset: -1,
+            offset: node_offset,
             is_root,
             parent_offset: Some(parent_offset),
         }

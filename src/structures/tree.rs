@@ -352,7 +352,7 @@ where
     pub fn to_binary(&mut self) -> Vec<u8> {
         let mut serialized = Vec::new();
 
-        serialized.extend(self.b.to_le_bytes().iter());
+        serialized.extend((self.b as u64).to_le_bytes().as_ref());
         serialized.extend(self.storage_manager.root_offset().to_le_bytes().iter());
 
         for item in self.storage_manager.data.iter() {
@@ -385,7 +385,9 @@ where
 
             let node_data = &data[offset..offset + node_len];
             let node = Node::deserialize(node_data);
-            tree.storage_manager.data.push(node);
+            tree.storage_manager
+                .data
+                .insert(node.offset as usize, node.clone());
             offset += node_len;
         }
 
