@@ -1,5 +1,5 @@
 use crate::errors::HaystackError;
-use std::fmt::{Debug, Error};
+use std::fmt::Debug;
 
 use super::serialization::{TreeDeserialization, TreeSerialization};
 
@@ -43,7 +43,7 @@ where
     K: Clone + Ord + TreeSerialization + TreeDeserialization,
     V: Clone + TreeSerialization + TreeDeserialization,
 {
-    pub fn new_leaf(offset: i64) -> Self {
+    pub fn new_leaf(_offset: i64) -> Self {
         Node {
             keys: Vec::new(),
             values: Vec::new(),
@@ -56,7 +56,7 @@ where
         }
     }
 
-    pub fn new_internal(offset: i64) -> Self {
+    pub fn new_internal(_offset: i64) -> Self {
         Node {
             keys: Vec::new(),
             values: Vec::new(),

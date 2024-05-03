@@ -1,6 +1,9 @@
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "wasm")]
+use js_sys::Float32Array;
+
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 
@@ -26,19 +29,21 @@ pub mod utils;
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 #[cfg_attr(feature = "python", pyclass)]
 pub struct HaystackEmbedded {
-    pub state: NamespaceState,
+    state: NamespaceState,
 }
 
-#[pymethods]
+#[cfg_attr(feature = "python", pymethods)]
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 impl HaystackEmbedded {
+    #[cfg(feature = "python")]
     #[new]
+    #[cfg_attr(feature = "wasm", wasm_bindgen(constructor))]
     pub fn new(namespace_id: String) -> HaystackEmbedded {
         let state = NamespaceState::new(namespace_id);
         HaystackEmbedded { state }
     }
 
-    pub fn add_vector(&mut self, vector: [f32; VECTOR_SIZE], metadata: String) {
+    fn inner_add_vector(&mut self, vector: [f32; VECTOR_SIZE], metadata: String) {
         let quantized_vector = quantize(&vector);
 
         let metadata: Vec<KVPair> = serde_json::from_str(&metadata).unwrap();
@@ -70,7 +75,7 @@ impl HaystackEmbedded {
         self.state.metadata_index.insert(id, metadata_index_item);
     }
 
-    pub fn batch_add_vectors(&mut self, vectors: Vec<[f32; VECTOR_SIZE]>, metadata: String) {
+    fn inner_batch_add_vectors(&mut self, vectors: Vec<[f32; VECTOR_SIZE]>, metadata: String) {
         let quantized_vectors = vectors.iter().map(|v| quantize(v)).collect();
 
         let metadata: Vec<Vec<KVPair>> = serde_json::from_str(&metadata).unwrap();
@@ -122,7 +127,7 @@ impl HaystackEmbedded {
         }
     }
 
-    pub fn query(&mut self, vector: [f32; VECTOR_SIZE], filters: String, k: usize) -> String {
+    fn inner_query(&mut self, vector: [f32; VECTOR_SIZE], filters: String, k: usize) -> String {
         let quantized_vector = quantize(&vector);
 
         let filters: Filter = serde_json::from_str(&filters).unwrap();
@@ -217,6 +222,51 @@ impl HaystackEmbedded {
         serde_json::to_string(&results).unwrap()
     }
 
+    #[cfg(feature = "wasm")]
+    pub fn query(&mut self, vector: Float32Array, filters: String, k: usize) -> String {
+        let mut vector_array = [0.0; VECTOR_SIZE];
+        vector_array.copy_from_slice(&vector.to_vec());
+
+        self.inner_query(vector_array, filters, k)
+    }
+
+    #[cfg(feature = "python")]
+    pub fn query(&mut self, vector: [f32; VECTOR_SIZE], filters: String, k: usize) -> String {
+        self.inner_query(vector, filters, k)
+    }
+
+    #[cfg(feature = "wasm")]
+    pub fn add_vector(&mut self, vector: Float32Array, metadata: String) {
+        let mut vector_array = [0.0; VECTOR_SIZE];
+        vector_array.copy_from_slice(&vector.to_vec());
+
+        self.inner_add_vector(vector_array, metadata)
+    }
+
+    #[cfg(feature = "python")]
+    pub fn add_vector(&mut self, vector: [f32; VECTOR_SIZE], metadata: String) {
+        self.inner_add_vector(vector, metadata)
+    }
+
+    #[cfg(feature = "wasm")]
+    pub fn batch_add_vectors(&mut self, vectors: Vec<Float32Array>, metadata: String) {
+        let vectors_array: Vec<[f32; VECTOR_SIZE]> = vectors
+            .iter()
+            .map(|v| {
+                let mut vector_array = [0.0; VECTOR_SIZE];
+                vector_array.copy_from_slice(&v.to_vec());
+                vector_array
+            })
+            .collect();
+
+        self.inner_batch_add_vectors(vectors_array, metadata)
+    }
+
+    #[cfg(feature = "python")]
+    pub fn batch_add_vectors(&mut self, vectors: Vec<[f32; VECTOR_SIZE]>, metadata: String) {
+        self.inner_batch_add_vectors(vectors, metadata)
+    }
+
     pub fn save_state(&mut self) -> Vec<u8> {
         self.state.save_state()
     }
@@ -226,6 +276,7 @@ impl HaystackEmbedded {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn haystack_embedded(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<HaystackEmbedded>()?;

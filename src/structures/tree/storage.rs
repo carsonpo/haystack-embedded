@@ -1,8 +1,4 @@
 use crate::structures::tree::node::Node;
-use std::fs::OpenOptions;
-use std::io;
-use std::path::PathBuf;
-use std::{fmt::Error, fs};
 
 use super::serialization::{TreeDeserialization, TreeSerialization};
 use crate::errors::HaystackError;

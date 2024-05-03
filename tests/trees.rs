@@ -2,15 +2,11 @@ extern crate haystack_embedded;
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::str::FromStr;
 
     use haystack_embedded::errors::HaystackError;
     use haystack_embedded::structures::tree::node::{Node, NodeType};
     use haystack_embedded::structures::tree::storage::StorageManager;
     use haystack_embedded::structures::tree::Tree;
-    use std::fs;
-    use uuid;
 
     #[test]
     fn test_store_and_load_node() {
