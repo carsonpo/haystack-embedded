@@ -2,9 +2,7 @@ pub mod node;
 pub mod serialization;
 pub mod storage;
 
-use std::fmt::{Debug, Display, Error};
-use std::io;
-use std::path::PathBuf;
+use std::fmt::{Debug, Display};
 
 use node::{Node, NodeType};
 use serialization::{TreeDeserialization, TreeSerialization};
@@ -364,7 +362,7 @@ where
         serialized
     }
 
-    pub fn from_binary(data: Vec<u8>) -> Result<(Tree<K, V>), HaystackError> {
+    pub fn from_binary(data: Vec<u8>) -> Result<Tree<K, V>, HaystackError> {
         let mut offset = 0;
 
         let mut tree = Tree::new()?;
@@ -391,6 +389,6 @@ where
             offset += node_len;
         }
 
-        Ok((tree))
+        Ok(tree)
     }
 }

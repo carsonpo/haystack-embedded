@@ -1,6 +1,5 @@
 use crate::constants::QUANTIZED_VECTOR_SIZE;
 use crate::errors::HaystackError;
-use std::io;
 
 const SIZE_OF_U64: usize = std::mem::size_of::<u64>();
 
