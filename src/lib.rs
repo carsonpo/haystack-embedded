@@ -134,13 +134,13 @@ impl HaystackEmbedded {
         }
 
         // Insert metadata
-        // self.state
-        //     .metadata_index
-        //     .batch_insert(batch_metadata_to_insert);
+        self.state
+            .metadata_index
+            .batch_insert(batch_metadata_to_insert);
 
-        for (id, item) in batch_metadata_to_insert {
-            self.state.metadata_index.insert(id, item);
-        }
+        // for (id, item) in batch_metadata_to_insert {
+        //     self.state.metadata_index.insert(id, item);
+        // }
 
         // Insert inverted index items
         for (kv, items) in inverted_index_items {
