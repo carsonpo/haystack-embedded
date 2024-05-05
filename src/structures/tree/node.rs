@@ -9,7 +9,7 @@ pub enum NodeType {
     Internal,
 }
 
-const MAX_KEYS: usize = 32;
+const MAX_KEYS: usize = 128;
 
 pub fn serialize_node_type(node_type: &NodeType) -> [u8; 1] {
     match node_type {
@@ -40,8 +40,8 @@ pub struct Node<K, V> {
 
 impl<K, V> Node<K, V>
 where
-    K: Clone + Ord + TreeSerialization + TreeDeserialization,
-    V: Clone + TreeSerialization + TreeDeserialization,
+    K: Clone + Ord + TreeSerialization + TreeDeserialization + Send + Sync,
+    V: Clone + TreeSerialization + TreeDeserialization + Send + Sync,
 {
     pub fn new_leaf(_offset: i64) -> Self {
         Node {

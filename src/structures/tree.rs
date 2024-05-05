@@ -2,6 +2,7 @@ pub mod node;
 pub mod serialization;
 pub mod storage;
 
+use rayon::prelude::*;
 use std::fmt::{Debug, Display};
 
 use node::{Node, NodeType};
@@ -17,8 +18,8 @@ pub struct Tree<K, V> {
 
 impl<K, V> Tree<K, V>
 where
-    K: Clone + Ord + TreeSerialization + TreeDeserialization + Debug + Display,
-    V: Clone + TreeSerialization + TreeDeserialization,
+    K: Clone + Ord + TreeSerialization + TreeDeserialization + Debug + Display + Send + Sync,
+    V: Clone + TreeSerialization + TreeDeserialization + Send + Sync,
 {
     pub fn new() -> Result<Self, HaystackError> {
         let mut storage_manager = StorageManager::<K, V>::new();
@@ -33,136 +34,142 @@ where
 
         Ok(Tree {
             storage_manager,
-            b: 32,
+            b: 128,
         })
     }
 
+    // pub fn insert(&mut self, key: K, value: V) -> Result<(), HaystackError> {
+    //     // println!("Inserting key: {}, value: {}", key, value);
+    //     let mut root = self
+    //         .storage_manager
+    //         .load_node(self.storage_manager.root_offset())?;
+
+    //     // println!("Root offset: {}, {}", self.root_offset, root.offset);
+
+    //     if root.is_full() {
+    //         // println!("Root is full, needs splitting");
+    //         let mut new_root = Node::new_internal(-1);
+    //         new_root.is_root = true;
+    //         let (median, mut sibling) = root.split(self.b)?;
+    //         // println!("Root split: median = {}, new sibling created", median);
+    //         // println!("Root split: median = {}, new sibling created", median);
+    //         root.is_root = false;
+    //         self.storage_manager.store_node(&mut root)?;
+    //         // println!("Root stored");
+    //         let sibling_offset = self.storage_manager.store_node(&mut sibling)?;
+    //         new_root.keys.push(median);
+    //         new_root.children.push(self.storage_manager.root_offset()); // old root offset
+    //         new_root.children.push(sibling_offset); // new sibling offset
+    //         new_root.is_root = true;
+    //         self.storage_manager.store_node(&mut new_root)?;
+    //         self.storage_manager.set_root_offset(new_root.offset);
+
+    //         root.parent_offset = Some(new_root.offset);
+    //         sibling.parent_offset = Some(new_root.offset);
+    //         self.storage_manager.store_node(&mut root)?;
+    //         self.storage_manager.store_node(&mut sibling)?;
+    //     }
+    //     // println!("Inserting into non-full root");
+    //     self.insert_non_full(self.storage_manager.root_offset(), key, value, 0)?;
+
+    //     // println!("Inserted key, root offset: {}", self.root_offset);
+
+    //     Ok(())
+    // }
+
+    // fn insert_non_full(
+    //     &mut self,
+    //     node_offset: i64,
+    //     key: K,
+    //     value: V,
+    //     depth: usize,
+    // ) -> Result<(), HaystackError> {
+    //     // if depth > 100 {
+    //     //     // Set a reasonable limit based on your observations
+    //     //     println!("Recursion depth limit reached: {}", depth);
+    //     //     return Ok(());
+    //     // }
+
+    //     let mut node = self.storage_manager.load_node(node_offset)?;
+    //     // println!(
+    //     //     "Depth: {}, Node type: {:?}, Keys: {:?}, is_full: {}",
+    //     //     depth,
+    //     //     node.node_type,
+    //     //     node.keys,
+    //     //     node.is_full()
+    //     // );
+
+    //     if node.node_type == NodeType::Leaf {
+    //         let idx = node.keys.binary_search(&key).unwrap_or_else(|x| x);
+    //         // println!(
+    //         //     "Inserting into leaf node: key: {}, len: {}",
+    //         //     key,
+    //         //     node.keys.len()
+    //         // );
+    //         // println!(
+    //         //     "Inserting into leaf node: key: {}, idx: {}, node_offset: {}",
+    //         //     key, idx, node_offset
+    //         // );
+
+    //         if node.keys.get(idx) == Some(&key) {
+    //             node.values[idx] = Some(value);
+
+    //             // println!(
+    //             //     "Storing leaf node with keys: {:?}, offset: {}",
+    //             //     node.keys, node.offset
+    //             // );
+    //             self.storage_manager.store_node(&mut node)?;
+    //             if node.is_root {
+    //                 // println!("Updating root offset to: {}", node.offset);
+    //                 // self.root_offset = node.offset.clone();
+    //                 self.storage_manager.set_root_offset(node.offset);
+    //             }
+    //         } else {
+    //             node.keys.insert(idx, key);
+    //             node.values.insert(idx, Some(value));
+
+    //             // println!(
+    //             //     "Storing leaf node with keys: {:?}, offset: {}",
+    //             //     node.keys, node.offset
+    //             // );
+    //             self.storage_manager.store_node(&mut node)?;
+    //             if node.is_root {
+    //                 // println!("Updating root offset to: {}", node.offset);
+    //                 // self.root_offset = node.offset.clone();
+    //                 self.storage_manager.set_root_offset(node.offset);
+    //             }
+    //         }
+    //     } else {
+    //         let idx = node.keys.binary_search(&key).unwrap_or_else(|x| x); // Find the child to go to
+    //         let child_offset = node.children[idx];
+    //         let mut child = self.storage_manager.load_node(child_offset)?;
+
+    //         if child.is_full() {
+    //             // println!("Child is full, needs splitting");
+    //             let (median, mut sibling) = child.split(self.b)?;
+    //             let sibling_offset = self.storage_manager.store_node(&mut sibling)?;
+
+    //             node.keys.insert(idx, median.clone());
+    //             node.children.insert(idx + 1, sibling_offset);
+    //             self.storage_manager.store_node(&mut node)?;
+
+    //             if key < median {
+    //                 self.insert_non_full(child_offset, key, value, depth + 1)?;
+    //             } else {
+    //                 self.insert_non_full(sibling_offset, key, value, depth + 1)?;
+    //             }
+    //         } else {
+    //             self.insert_non_full(child_offset, key, value, depth + 1)?;
+    //         }
+    //     }
+
+    //     Ok(())
+    // }
+
     pub fn insert(&mut self, key: K, value: V) -> Result<(), HaystackError> {
-        // println!("Inserting key: {}, value: {}", key, value);
-        let mut root = self
-            .storage_manager
-            .load_node(self.storage_manager.root_offset())?;
+        let vals = vec![(key, value)];
 
-        // println!("Root offset: {}, {}", self.root_offset, root.offset);
-
-        if root.is_full() {
-            // println!("Root is full, needs splitting");
-            let mut new_root = Node::new_internal(-1);
-            new_root.is_root = true;
-            let (median, mut sibling) = root.split(self.b)?;
-            // println!("Root split: median = {}, new sibling created", median);
-            // println!("Root split: median = {}, new sibling created", median);
-            root.is_root = false;
-            self.storage_manager.store_node(&mut root)?;
-            // println!("Root stored");
-            let sibling_offset = self.storage_manager.store_node(&mut sibling)?;
-            new_root.keys.push(median);
-            new_root.children.push(self.storage_manager.root_offset()); // old root offset
-            new_root.children.push(sibling_offset); // new sibling offset
-            new_root.is_root = true;
-            self.storage_manager.store_node(&mut new_root)?;
-            self.storage_manager.set_root_offset(new_root.offset);
-
-            root.parent_offset = Some(new_root.offset);
-            sibling.parent_offset = Some(new_root.offset);
-            self.storage_manager.store_node(&mut root)?;
-            self.storage_manager.store_node(&mut sibling)?;
-        }
-        // println!("Inserting into non-full root");
-        self.insert_non_full(self.storage_manager.root_offset(), key, value, 0)?;
-
-        // println!("Inserted key, root offset: {}", self.root_offset);
-
-        Ok(())
-    }
-
-    fn insert_non_full(
-        &mut self,
-        node_offset: i64,
-        key: K,
-        value: V,
-        depth: usize,
-    ) -> Result<(), HaystackError> {
-        if depth > 100 {
-            // Set a reasonable limit based on your observations
-            println!("Recursion depth limit reached: {}", depth);
-            return Ok(());
-        }
-
-        let mut node = self.storage_manager.load_node(node_offset)?;
-        // println!(
-        //     "Depth: {}, Node type: {:?}, Keys: {:?}, is_full: {}",
-        //     depth,
-        //     node.node_type,
-        //     node.keys,
-        //     node.is_full()
-        // );
-
-        if node.node_type == NodeType::Leaf {
-            let idx = node.keys.binary_search(&key).unwrap_or_else(|x| x);
-            // println!(
-            //     "Inserting into leaf node: key: {}, len: {}",
-            //     key,
-            //     node.keys.len()
-            // );
-            // println!(
-            //     "Inserting into leaf node: key: {}, idx: {}, node_offset: {}",
-            //     key, idx, node_offset
-            // );
-
-            if node.keys.get(idx) == Some(&key) {
-                node.values[idx] = Some(value);
-
-                // println!(
-                //     "Storing leaf node with keys: {:?}, offset: {}",
-                //     node.keys, node.offset
-                // );
-                self.storage_manager.store_node(&mut node)?;
-                if node.is_root {
-                    // println!("Updating root offset to: {}", node.offset);
-                    // self.root_offset = node.offset.clone();
-                    self.storage_manager.set_root_offset(node.offset);
-                }
-            } else {
-                node.keys.insert(idx, key);
-                node.values.insert(idx, Some(value));
-
-                // println!(
-                //     "Storing leaf node with keys: {:?}, offset: {}",
-                //     node.keys, node.offset
-                // );
-                self.storage_manager.store_node(&mut node)?;
-                if node.is_root {
-                    // println!("Updating root offset to: {}", node.offset);
-                    // self.root_offset = node.offset.clone();
-                    self.storage_manager.set_root_offset(node.offset);
-                }
-            }
-        } else {
-            let idx = node.keys.binary_search(&key).unwrap_or_else(|x| x); // Find the child to go to
-            let child_offset = node.children[idx];
-            let mut child = self.storage_manager.load_node(child_offset)?;
-
-            if child.is_full() {
-                // println!("Child is full, needs splitting");
-                let (median, mut sibling) = child.split(self.b)?;
-                let sibling_offset = self.storage_manager.store_node(&mut sibling)?;
-
-                node.keys.insert(idx, median.clone());
-                node.children.insert(idx + 1, sibling_offset);
-                self.storage_manager.store_node(&mut node)?;
-
-                if key < median {
-                    self.insert_non_full(child_offset, key, value, depth + 1)?;
-                } else {
-                    self.insert_non_full(sibling_offset, key, value, depth + 1)?;
-                }
-            } else {
-                self.insert_non_full(child_offset, key, value, depth + 1)?;
-            }
-        }
-
-        Ok(())
+        self.batch_insert(vals)
     }
 
     pub fn search(&mut self, key: K) -> Result<Option<V>, HaystackError> {
@@ -326,8 +333,13 @@ where
 
             // Insert the key into the correct leaf node
             let position = node.keys.binary_search(key).unwrap_or_else(|x| x);
-            node.keys.insert(position, key.clone());
-            node.values.insert(position, Some(value.clone()));
+
+            if node.keys.get(position) == Some(&key) {
+                node.values[position] = Some(value.clone());
+            } else {
+                node.keys.insert(position, key.clone());
+                node.values.insert(position, Some(value.clone()));
+            }
             self.storage_manager.store_node(&mut node)?; // Store changes after each insertion
         }
 
@@ -351,12 +363,12 @@ where
         let mut serialized = Vec::new();
 
         serialized.extend((self.b as u64).to_le_bytes().as_ref());
-        serialized.extend(self.storage_manager.root_offset().to_le_bytes().iter());
+        serialized.extend(self.storage_manager.root_offset().to_le_bytes().as_ref());
 
         for item in self.storage_manager.data.iter() {
             let serialized_node = item.serialize();
-            serialized.extend(serialized_node.len().to_le_bytes().iter());
-            serialized.extend(serialized_node.iter());
+            serialized.extend(serialized_node.len().to_le_bytes().as_ref());
+            serialized.extend(serialized_node.as_slice());
         }
 
         serialized
@@ -390,5 +402,17 @@ where
         }
 
         Ok(tree)
+    }
+
+    pub fn len(&self) -> usize {
+        let mut i = 0;
+        for item in self.storage_manager.data.iter() {
+            match item.node_type {
+                NodeType::Leaf => i += item.values.len(),
+                _ => (),
+            }
+        }
+
+        i
     }
 }
