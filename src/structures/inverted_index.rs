@@ -54,7 +54,8 @@ impl TreeDeserialization for InvertedIndexItem {
         let indices_len = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
         offset += 8;
         // let mut indices = Vec::new();
-        let len_of_index_bytes = usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        let len_of_index_bytes =
+            u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
         offset += 8;
 
         let start = offset;
@@ -70,7 +71,7 @@ impl TreeDeserialization for InvertedIndexItem {
         // }
 
         let indices = indices_chunks
-            .map(|chunk| usize::from_le_bytes(chunk.try_into().unwrap()))
+            .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()) as usize)
             .collect();
 
         offset = end;
@@ -78,7 +79,8 @@ impl TreeDeserialization for InvertedIndexItem {
         let ids_len = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
         offset += 8;
         // let mut ids = Vec::new();
-        let len_of_id_bytes = usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        let len_of_id_bytes =
+            u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
         offset += 8;
 
         // get them all and split the bytes into chunks
@@ -200,13 +202,15 @@ impl InvertedIndex {
                 let mut decompressed = v.indices.clone();
 
                 // binary search to insert all of the ones to append
-                for index in value.indices {
-                    let idx = decompressed.binary_search(&index).unwrap_or_else(|x| x);
-                    decompressed.insert(idx, index);
-                }
+                // for index in value.indices {
+                //     let idx = decompressed.binary_search(&index).unwrap_or_else(|x| x);
+                //     decompressed.insert(idx, index);
+                // }
 
-                decompressed.sort_unstable();
-                decompressed.dedup();
+                decompressed.extend(value.indices);
+
+                // decompressed.sort_unstable();
+                // decompressed.dedup();
 
                 // println!("Before compression: {:?}", decompressed);
 
@@ -231,5 +235,9 @@ impl InvertedIndex {
     pub fn from_binary(data: Vec<u8>) -> Self {
         let tree = Tree::from_binary(data).expect("Failed to create tree from binary");
         InvertedIndex { tree }
+    }
+
+    pub fn len(&self) -> usize {
+        self.tree.len()
     }
 }

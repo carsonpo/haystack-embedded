@@ -149,8 +149,7 @@ impl TreeDeserialization for MetadataIndexItem {
 
             // kvs.push(KVPair { key, value });
 
-            let kv_len =
-                usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
+            let kv_len = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
             offset += 8;
 
             let kv = TreeDeserialization::deserialize(&data[offset..offset + kv_len]);
@@ -165,7 +164,8 @@ impl TreeDeserialization for MetadataIndexItem {
         let id = u128::from_le_bytes(data[offset..offset + 16].try_into().unwrap());
         offset += 16;
 
-        let vector_index = usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        let vector_index =
+            u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
         // offset += 8;
 
         // let namespaced_id_len =
@@ -223,6 +223,10 @@ impl MetadataIndex {
             Ok(v) => v,
             Err(_) => None,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.tree.len()
     }
 
     pub fn to_binary(&mut self) -> Vec<u8> {

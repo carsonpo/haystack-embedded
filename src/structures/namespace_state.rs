@@ -43,27 +43,48 @@ impl NamespaceState {
         state
     }
 
-    pub fn load_state(&mut self, data: Vec<u8>) {
+    pub fn load_state(&mut self, data: Vec<u8>) -> Result<(), String> {
         let mut offset = 0;
 
-        let metadata_index_len = usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        // Helper function to safely extract usize from data
+        fn extract_length(data: &[u8], start: usize) -> Result<usize, String> {
+            data.get(start..start + 8)
+                .ok_or_else(|| "Data slice error".to_string())
+                .and_then(|slice| {
+                    slice
+                        .try_into()
+                        .map_err(|_| "Conversion error".to_string())
+                        .and_then(|bytes: [u8; 8]| Ok(u64::from_le_bytes(bytes) as usize))
+                })
+        }
+
+        let metadata_index_len = extract_length(&data, offset)?;
         offset += 8;
 
-        self.metadata_index =
-            MetadataIndex::from_binary(data[offset..offset + metadata_index_len].to_vec());
+        let metadata_index_data = data
+            .get(offset..offset + metadata_index_len)
+            .ok_or("Metadata index slice error")?;
+        self.metadata_index = MetadataIndex::from_binary(metadata_index_data.to_vec());
         offset += metadata_index_len;
 
-        let inverted_index_len = usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        let inverted_index_len = extract_length(&data, offset)?;
         offset += 8;
 
-        self.inverted_index =
-            InvertedIndex::from_binary(data[offset..offset + inverted_index_len].to_vec());
+        let inverted_index_data = data
+            .get(offset..offset + inverted_index_len)
+            .ok_or("Inverted index slice error")?;
+        self.inverted_index = InvertedIndex::from_binary(inverted_index_data.to_vec());
         offset += inverted_index_len;
 
-        let vectors_len = usize::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+        let vectors_len = extract_length(&data, offset)?;
         offset += 8;
 
-        self.vectors = DenseVectorList::from_binary(&data[offset..offset + vectors_len].to_vec())
-            .expect("Failed to load vectors");
+        let vectors_data = data
+            .get(offset..offset + vectors_len)
+            .ok_or("Vectors slice error")?;
+        self.vectors = DenseVectorList::from_binary(vectors_data)
+            .map_err(|_| "Failed to load vectors".to_string())?;
+
+        Ok(())
     }
 }
