@@ -60,6 +60,35 @@ impl TreeSerialization for KVPair {
     }
 }
 
+impl KVPair {
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut serialized = Vec::new();
+
+        serialized.extend_from_slice(self.key.len().to_le_bytes().as_ref());
+        serialized.extend_from_slice(self.key.as_bytes());
+        serialized.extend_from_slice(self.value.len().to_le_bytes().as_ref());
+        serialized.extend_from_slice(self.value.as_bytes());
+
+        serialized
+    }
+
+    pub fn deserialize(data: &[u8]) -> Self {
+        let mut offset = 0;
+
+        let key_len = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
+        offset += 8;
+        let key = String::from_utf8(data[offset..offset + key_len].to_vec()).unwrap();
+        offset += key_len;
+
+        let value_len = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap()) as usize;
+        offset += 8;
+        let value = String::from_utf8(data[offset..offset + value_len].to_vec()).unwrap();
+        // offset += value_len;
+
+        KVPair { key, value }
+    }
+}
+
 impl TreeDeserialization for KVPair {
     fn deserialize(data: &[u8]) -> Self {
         let mut offset = 0;

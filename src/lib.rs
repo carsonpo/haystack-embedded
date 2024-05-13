@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 use serde_json;
 use std::collections::HashMap;
 
-use constants::VECTOR_SIZE;
+use constants::{QUANTIZED_VECTOR_SIZE, VECTOR_SIZE};
 use libflate::gzip::{Decoder, Encoder};
 use rayon::prelude::*;
 use std::io::{Read, Write};
@@ -58,20 +58,19 @@ impl HaystackEmbedded {
 
         let metadata: Vec<KVPair> = serde_json::from_str(&metadata).unwrap();
 
+        let id = uuid::Uuid::new_v4().as_u128();
+
         let vector_index = self
             .state
             .vectors
-            .push(quantized_vector)
-            .expect("Failed to add vector");
-
-        let id = uuid::Uuid::new_v4().as_u128();
+            .insert(quantized_vector, id, metadata.clone());
 
         for kv in metadata.clone() {
             if kv.key == "text" {
                 continue;
             }
             let inverted_index_item = InvertedIndexItem {
-                indices: vec![vector_index],
+                indices: vec![],
                 ids: vec![id],
             };
             self.state
@@ -82,7 +81,7 @@ impl HaystackEmbedded {
         let metadata_index_item = MetadataIndexItem {
             id,
             kvs: metadata,
-            vector_index,
+            vector_index: 0,
         };
 
         self.state.metadata_index.insert(id, metadata_index_item);
@@ -103,15 +102,19 @@ impl HaystackEmbedded {
             "Vectors and metadata length mismatch"
         );
 
-        let vector_indices = self
-            .state
-            .vectors
-            .batch_push(quantized_vectors)
-            .expect("Failed to add vectors");
-
         let ids: Vec<u128> = (0..vectors.len())
             .map(|_| uuid::Uuid::new_v4().as_u128())
             .collect();
+
+        self.state
+            .vectors
+            .batch_insert(quantized_vectors.clone(), ids.clone(), metadata.clone());
+
+        let vector_indices = self
+            .state
+            .dense_vectors
+            .batch_push(quantized_vectors.clone())
+            .expect("Failed to batch push vectors");
 
         let mut inverted_index_items: HashMap<KVPair, Vec<(usize, u128)>> = HashMap::new();
         let mut batch_metadata_to_insert = Vec::new();
@@ -129,18 +132,18 @@ impl HaystackEmbedded {
                 inverted_index_items
                     .entry(kv.clone())
                     .or_insert_with(Vec::new)
-                    .push((vector_indices[idx], ids[idx]));
+                    .push((rand::random(), ids[idx]));
             }
         }
 
         // Insert metadata
-        self.state
-            .metadata_index
-            .batch_insert(batch_metadata_to_insert);
+        // self.state
+        //     .metadata_index
+        //     .batch_insert(batch_metadata_to_insert);
 
-        // for (id, item) in batch_metadata_to_insert {
-        //     self.state.metadata_index.insert(id, item);
-        // }
+        for (id, item) in batch_metadata_to_insert {
+            self.state.metadata_index.insert(id, item);
+        }
 
         // Insert inverted index items
         for (kv, items) in inverted_index_items {
@@ -160,9 +163,55 @@ impl HaystackEmbedded {
     fn inner_query(&mut self, vector: [f32; VECTOR_SIZE], filters: String, k: usize) -> String {
         let quantized_vector = quantize(&vector);
         let filters: Filter = serde_json::from_str(&filters).unwrap();
-        let (indices, ids) =
-            Filters::evaluate(&filters, &mut self.state.inverted_index).get_indices();
+        // let (indices, ids) =
+        //     Filters::evaluate(&filters, &mut self.state.inverted_index).get_indices();
 
+        // if indices.len() < 250_000 {
+        //     let result_ids = self.inner_query_linear_scan(quantized_vector, indices, ids, k);
+
+        //     let mut results = Vec::new();
+
+        //     for id in result_ids {
+        //         if let Some(item) = self.state.metadata_index.get(id) {
+        //             results.push(item.kvs.clone());
+        //         } else {
+        //             panic!("ID not found: {}", id);
+        //         }
+        //     }
+
+        //     return serde_json::to_string(&results).unwrap();
+        // }
+
+        let all_top_k_indices = self.state.vectors.search(quantized_vector, k, filters);
+
+        let mut results = Vec::new();
+
+        for (idx) in all_top_k_indices.clone() {
+            if let Some(item) = self.state.metadata_index.get(idx) {
+                results.push(item.kvs.clone());
+            } else {
+                // results.push(vec![])
+                // panic!("Index not found: {}", idx);
+                // I want to print out as much debug info as possible
+                // so I can figure out what's going on
+
+                panic!(
+                    "ID not found: {}. top_k: {}, all_top_k_indices: {:?}, metadata index len: {:?}, inverted index len: {:?}",
+                    idx, k, all_top_k_indices, self.state.metadata_index.len(), self.state.inverted_index.len()
+                )
+            }
+        }
+
+        serde_json::to_string(&results).unwrap()
+    }
+
+    fn inner_query_linear_scan(
+        &mut self,
+        quantized_vector: [u8; QUANTIZED_VECTOR_SIZE],
+        indices: Vec<usize>,
+        ids: Vec<u128>,
+        k: usize,
+    ) -> Vec<u128> {
         // Create batches
         let mut batch_indices: Vec<Vec<usize>> = Vec::new();
         let mut current_batch = Vec::new();
@@ -191,7 +240,7 @@ impl HaystackEmbedded {
         for batch in batch_indices {
             let vectors = self
                 .state
-                .vectors
+                .dense_vectors
                 .get_contiguous(batch[0], batch.len())
                 .unwrap();
 
@@ -214,29 +263,10 @@ impl HaystackEmbedded {
             all_top_k_indices.extend(batch_top_k);
         }
 
-        // Aggregate and sort
         all_top_k_indices.sort_by_key(|&(_, distance)| distance);
         all_top_k_indices.truncate(top_k_to_use);
 
-        let mut results = Vec::new();
-
-        for (idx, _) in all_top_k_indices.clone() {
-            if let Some(item) = self.state.metadata_index.get(idx) {
-                results.push(item.kvs.clone());
-            } else {
-                // results.push(vec![])
-                // panic!("Index not found: {}", idx);
-                // I want to print out as much debug info as possible
-                // so I can figure out what's going on
-
-                panic!(
-                    "ID not found: {}. top_k: {}, all_top_k_indices: {:?}, metadata index len: {:?}, inverted index len: {:?}",
-                    idx, k, all_top_k_indices, self.state.metadata_index.len(), self.state.inverted_index.len()
-                )
-            }
-        }
-
-        serde_json::to_string(&results).unwrap()
+        return all_top_k_indices.iter().map(|(id, _)| *id).collect();
     }
 
     #[cfg(feature = "wasm")]
@@ -299,6 +329,10 @@ impl HaystackEmbedded {
         let mut out = Vec::new();
         decoder.read_to_end(&mut out).unwrap();
         self.state.load_state(out).unwrap();
+    }
+
+    pub fn calibrate(&mut self) {
+        self.state.vectors.calibrate().expect("Failed to calibrate");
     }
 }
 

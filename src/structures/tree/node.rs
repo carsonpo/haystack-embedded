@@ -262,13 +262,13 @@ impl<K, V> Default for Node<K, V> {
     }
 }
 
-fn serialize_length(buffer: &mut Vec<u8>, length: u32) -> &Vec<u8> {
+pub fn serialize_length(buffer: &mut Vec<u8>, length: u32) -> &Vec<u8> {
     buffer.extend_from_slice(&length.to_le_bytes());
 
     // Return the buffer to allow chaining
     buffer
 }
 
-fn read_length(data: &[u8]) -> usize {
+pub fn read_length(data: &[u8]) -> usize {
     u32::from_le_bytes(data.try_into().unwrap()) as usize
 }

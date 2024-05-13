@@ -59,18 +59,6 @@ impl Filters {
         Filters::new(intersection_indices, intersection_ids)
     }
     pub fn union(&self, other: &Filters) -> Filters {
-        // let mut union_indices = self.current_indices.clone();
-        // union_indices.extend(other.current_indices.iter().cloned());
-        // union_indices.sort_unstable();
-        // union_indices.dedup();
-
-        // let mut union_ids = self.current_ids.clone();
-        // union_ids.extend(other.current_ids.iter().cloned());
-        // union_ids.sort_unstable();
-        // union_ids.dedup();
-
-        // Filters::new(union_indices, union_ids)
-
         // use rayon for parallelism
         let union_indices: Vec<usize> = self
             .current_indices
@@ -90,24 +78,6 @@ impl Filters {
     }
 
     pub fn difference(&self, other: &Filters) -> Filters {
-        // let other_indices_set: HashSet<_> = other.current_indices.iter().collect();
-        // let difference_indices = self
-        //     .current_indices
-        //     .iter()
-        //     .filter(|&x| !other_indices_set.contains(x))
-        //     .cloned()
-        //     .collect::<Vec<_>>();
-
-        // let other_ids_set: HashSet<_> = other.current_ids.iter().collect();
-        // let difference_ids = self
-        //     .current_ids
-        //     .iter()
-        //     .filter(|&x| !other_ids_set.contains(x))
-        //     .cloned()
-        //     .collect::<Vec<_>>();
-
-        // Filters::new(difference_indices, difference_ids)
-
         // use rayon
         let other_indices_set: HashSet<_> = other.current_indices.iter().collect();
         let difference_indices: Vec<usize> = self
@@ -146,6 +116,35 @@ impl Filters {
         match index.get(key.clone()) {
             Some(item) => Filters::new(item.indices, item.ids),
             None => Filters::new(vec![], vec![]),
+        }
+    }
+
+    pub fn matches(filters: &Filter, metadata: &Vec<KVPair>) -> bool {
+        match filters {
+            Filter::And(filters) => {
+                for f in filters.iter() {
+                    if !Filters::matches(f, metadata) {
+                        return false;
+                    }
+                }
+                true
+            }
+            Filter::Or(filters) => {
+                for f in filters.iter() {
+                    if Filters::matches(f, metadata) {
+                        return true;
+                    }
+                }
+                false
+            }
+            Filter::In(key, values) => {
+                let kv_pair = KVPair::new(key.clone(), "".to_string()); // Ensure correct KVPair creation
+                metadata.contains(&kv_pair)
+            }
+            Filter::Eq(key, value) => {
+                let kv_pair = KVPair::new(key.clone(), value.clone()); // Ensure correct KVPair creation
+                metadata.contains(&kv_pair)
+            }
         }
     }
 

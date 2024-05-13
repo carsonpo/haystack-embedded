@@ -1,3 +1,4 @@
+use crate::structures::ann_tree::Tree;
 use crate::structures::dense_vector_list::DenseVectorList;
 use crate::structures::inverted_index::InvertedIndex;
 use crate::structures::metadata_index::MetadataIndex;
@@ -5,21 +6,24 @@ use crate::structures::metadata_index::MetadataIndex;
 pub struct NamespaceState {
     pub namespace_id: String,
     pub metadata_index: MetadataIndex,
+    pub dense_vectors: DenseVectorList,
     pub inverted_index: InvertedIndex,
-    pub vectors: DenseVectorList,
+    pub vectors: Tree,
 }
 
 impl NamespaceState {
     pub fn new(namespace_id: String) -> Self {
         let metadata_index = MetadataIndex::new();
         let inverted_index = InvertedIndex::new();
-        let vectors = DenseVectorList::new(1000);
+        let dense_vectors = DenseVectorList::new(1000);
+        let vectors = Tree::new().expect("Failed to create tree");
 
         NamespaceState {
             namespace_id,
             metadata_index,
             inverted_index,
             vectors,
+            dense_vectors,
         }
     }
 
@@ -27,6 +31,7 @@ impl NamespaceState {
         let metadata_index_binary = self.metadata_index.to_binary();
         let inverted_index_binary = self.inverted_index.to_binary();
         let vectors_binary = self.vectors.to_binary();
+        // let dense_vectors_binary = self.dense_vectors.to_binary();
 
         let mut state = Vec::new();
 
@@ -39,6 +44,9 @@ impl NamespaceState {
         state.extend(vectors_binary.len().to_le_bytes().as_ref());
 
         state.extend(vectors_binary);
+
+        // state.extend(dense_vectors_binary.len().to_le_bytes().as_ref());
+        // state.extend(dense_vectors_binary);
 
         state
     }
@@ -82,8 +90,20 @@ impl NamespaceState {
         let vectors_data = data
             .get(offset..offset + vectors_len)
             .ok_or("Vectors slice error")?;
-        self.vectors = DenseVectorList::from_binary(vectors_data)
-            .map_err(|_| "Failed to load vectors".to_string())?;
+        self.vectors = Tree::from_binary(vectors_data.to_vec()).expect("Failed to load tree");
+
+        offset += vectors_len;
+
+        // let dense_vectors_len = extract_length(&data, offset)?;
+
+        // offset += 8;
+
+        // let dense_vectors_data = data
+        //     .get(offset..offset + dense_vectors_len)
+        //     .ok_or("Dense vectors slice error")?;
+
+        // self.dense_vectors =
+        //     DenseVectorList::from_binary(dense_vectors_data).expect("Failed to load dense vectors");
 
         Ok(())
     }
